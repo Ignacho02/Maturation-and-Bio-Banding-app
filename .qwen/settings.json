@@ -5,7 +5,12 @@
       "Bash(findstr *)",
       "Bash(type *)",
       "Bash(del *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(git submodule *)",
+      "Bash(dir *)",
+      "Bash(git log *)",
+      "Bash(rmdir *)",
+      "Bash(git add *)"
     ]
   },
   "$version": 3
