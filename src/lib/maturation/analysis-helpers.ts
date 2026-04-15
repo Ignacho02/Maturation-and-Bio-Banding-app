@@ -169,6 +169,16 @@ export interface BioBandingGroup {
 export function buildBioBandingGroups(
   assessments: MaturationResult[],
 ): BioBandingGroup[] {
+  // Deduplicate: keep only latest assessment per athlete
+  const latestMap = new Map<string, MaturationResult>();
+  for (const a of assessments) {
+    const existing = latestMap.get(a.inputs.athleteId);
+    if (!existing || existing.inputs.dataCollectionDate < a.inputs.dataCollectionDate) {
+      latestMap.set(a.inputs.athleteId, a);
+    }
+  }
+  const latestAssessments = Array.from(latestMap.values());
+
   const bands: { band: MaturityBand; label: string; advice: string }[] = [
     { band: "Post-PHV", label: "Early maturers", advice: "Strength loads and competition ready." },
     { band: "Mid-PHV", label: "Average maturers", advice: "Monitor loads, adapt volume." },
@@ -176,12 +186,12 @@ export function buildBioBandingGroups(
   ];
 
   // Calculate global Z-scores
-  const offsets = assessments.map((a) => a.classification.primaryOffset);
+  const offsets = latestAssessments.map((a) => a.classification.primaryOffset);
   const sd = stdDev(offsets);
   const m = mean(offsets);
 
   return bands.map(({ band, label, advice }) => {
-    const grouped = assessments
+    const grouped = latestAssessments
       .filter((a) => a.classification.maturityBand === band)
       .map((a) => ({
         id: a.inputs.athleteId,
