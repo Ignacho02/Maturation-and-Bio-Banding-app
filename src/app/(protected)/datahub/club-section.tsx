@@ -1,12 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import * as XLSX from "xlsx";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { useAppState } from "@/lib/store/app-state";
 import { cn } from "@/lib/utils";
-import { Beaker, Plus, Trash2, Users, Palette, Shield, Edit2, Search, X } from "lucide-react";
+import { Beaker, Plus, Trash2, Users, Palette, Shield, Edit2, Search, X, Check, User, BarChart2, Activity, ChevronRight, FileSpreadsheet, UploadCloud } from "lucide-react";
 import type { PerformanceArea, PerformanceDefinition } from "@/lib/types";
 import { performancePresets, performanceAreaLabels } from "./performance-constants";
+
+function downloadSheet(filename: string, rows: Array<Record<string, unknown>>, sheet: string) {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), sheet);
+  XLSX.writeFile(workbook, filename);
+}
 
 export function ClubSection() {
   const { t } = useLocale();
@@ -244,22 +251,168 @@ function PlayersTab({
   updateAthlete,
   deleteAthlete,
 }: {
-  athletes: Array<{ id: string; name: string; sex: string; ageGroup: string; teamName?: string; position?: string; dob: string; clubName: string; teamId?: string }>;
+  athletes: Array<{ id: string; name: string; sex: string; ageGroup: string; teamName?: string; position?: string; dob: string; clubName: string; teamId?: string; photoUrl?: string }>;
   teams: Array<{ id: string; name: string }>;
-  addAthlete: (a: { name: string; sex: "male" | "female"; ageGroup: string; clubName: string; teamName?: string; teamId?: string; position?: string; dob: string }) => void;
-  updateAthlete: (id: string, updates: { name?: string; sex?: "male" | "female"; ageGroup?: string; teamName?: string; teamId?: string; position?: string; dob?: string }) => void;
+  addAthlete: (a: { name: string; sex: "male" | "female"; ageGroup: string; clubName: string; teamName?: string; teamId?: string; position?: string; dob: string; photoUrl?: string }) => void;
+  updateAthlete: (id: string, updates: { name?: string; sex?: "male" | "female"; ageGroup?: string; teamName?: string; teamId?: string; position?: string; dob?: string; photoUrl?: string }) => void;
   deleteAthlete: (id: string) => void;
 }) {
   const { t } = useLocale();
   const { state } = useAppState();
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [sex, setSex] = useState<"male" | "female">("male");
   const [ageGroup, setAgeGroup] = useState("");
   const [teamId, setTeamId] = useState("");
   const [position, setPosition] = useState("");
   const [dob, setDob] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  
+  const selectedAthlete = athletes.find(a => a.id === selectedAthleteId);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setPhotoUrl(ev.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const [importFeedback, setImportFeedback] = useState("");
+
+  async function downloadTemplate() {
+    const isEn = t("datahub.title") === "DataHub";
+    const headers = isEn 
+      ? ["Name", "Sex", "Age Group", "Team", "Position", "DOB (YYYY-MM-DD)"]
+      : ["Nombre", "Sexo", "Grupo de Edad", "Equipo", "Posicion", "Fecha de Nacimiento (AAAA-MM-DD)"];
+    
+    // Dynamic import to avoid heavy initial bundle
+    const ExcelJS = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet(isEn ? "Players" : "Jugadores");
+    
+    worksheet.addRow(headers);
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.columns.forEach(c => { c.width = 25; });
+    
+    const sexOptions = isEn ? '"male,female"' : '"masculino,femenino"';
+    
+    // Hidden sheet for teams to avoid 255 character limit in list formulae
+    const teamSheetName = "HiddenTeams";
+    if (teams.length > 0) {
+      const teamSheet = workbook.addWorksheet(teamSheetName, { state: 'hidden' });
+      teams.forEach((t, i) => {
+        teamSheet.getCell(`A${i + 1}`).value = t.name;
+      });
+    }
+
+    for (let i = 2; i <= 1000; i++) {
+        // Sex column is B (2)
+        worksheet.getCell(i, 2).dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: [sexOptions],
+            showErrorMessage: true,
+            errorStyle: 'error',
+            errorTitle: 'Valor incorrecto',
+            error: 'Por favor, selecciona un valor de la lista.'
+        };
+
+        // Team column is D (4)
+        if (teams.length > 0) {
+            worksheet.getCell(i, 4).dataValidation = {
+                type: 'list',
+                allowBlank: true,
+                formulae: [`'${teamSheetName}'!$A$1:$A$${teams.length}`],
+                showErrorMessage: true,
+                errorStyle: 'warning',
+                errorTitle: 'Nuevo equipo',
+                error: 'Puedes escribir un equipo nuevo que se creará automáticamente.'
+            };
+        }
+    }
+    
+    // Set a sample row
+    const sampleRow = isEn 
+      ? ["Sample Athlete", "male", "U14", teams[0]?.name || "U14 Boys", "Winger", "2012-02-14"]
+      : ["Ej: Juan Perez", "masculino", "Sub-14", teams[0]?.name || "Juvenil A", "Delantero", "2012-02-14"];
+    worksheet.addRow(sampleRow);
+    // Explicitly apply validation to sample row cells too
+    worksheet.getCell(2, 2).value = sampleRow[1];
+    worksheet.getCell(2, 4).value = sampleRow[3];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = isEn ? "add-players-template.xlsx" : "anadir-jugadores-plantilla.xlsx";
+    a.click();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async function handleImportExcel(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[workbook.SheetNames[0]]);
+      
+      let count = 0;
+      for (const raw of rows) {
+        const map: Record<string, string> = { "Nombre": "Name", "Sexo": "Sex", "masculino": "male", "femenino": "female", "Grupo de Edad": "Age Group", "Equipo": "Team", "Posicion": "Position", "Fecha de Nacimiento (AAAA-MM-DD)": "DOB", "DOB (YYYY-MM-DD)": "DOB", "Fecha de Nacimiento": "DOB" };
+        const row: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(raw)) row[map[key] ?? key] = value;
+        
+        const athleteName = String(row["Name"] ?? "").trim();
+        const sexValue = String(row["Sex"] ?? "").trim().toLowerCase();
+        let dobStr = String(row["DOB"] ?? "").trim();
+        
+        // Handling Excel date strings if it outputs serial numbers
+        if (!isNaN(Number(dobStr)) && dobStr !== "") {
+          const excelEpoch = new Date(1899, 11, 30);
+          const dateVal = new Date(excelEpoch.getTime() + Number(dobStr) * 86400000);
+          dobStr = dateVal.toISOString().split('T')[0];
+        }
+
+        if (!athleteName || !dobStr || athleteName.includes("Ej: ") || athleteName.includes("Sample Athlete")) continue;
+        
+        const teamName = String(row["Team"] ?? "").trim();
+        const teamMatch = teams.find(t => t.name.toLowerCase() === teamName.toLowerCase());
+        
+        addAthlete({
+          name: athleteName,
+          sex: sexValue === "female" ? "female" : "male",
+          ageGroup: String(row["Age Group"] ?? "").trim(),
+          clubName: state.club.name,
+          teamName: teamMatch?.name,
+          teamId: teamMatch?.id,
+          position: String(row["Position"] ?? "").trim() || undefined,
+          dob: dobStr
+        });
+        count++;
+      }
+      
+      if (count > 0) {
+        setImportFeedback(t("datahub.bulkAddSuccess")?.replace("{count}", count.toString()) || `✅ ${count} jugadores añadidos con éxito.`);
+        setTimeout(() => {
+          setImportFeedback("");
+          closeModals();
+        }, 2000);
+      } else {
+        setImportFeedback(t("datahub.bulkAddError") || "❌ No se encontraron jugadores válidos en el archivo.");
+        setTimeout(() => setImportFeedback(""), 3000);
+      }
+    } catch (e) {
+      setImportFeedback(t("datahub.bulkAddErrorProcess") || "❌ Error al procesar el archivo Excel.");
+      setTimeout(() => setImportFeedback(""), 3000);
+    }
+    event.target.value = "";
+  }
   
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -285,19 +438,22 @@ function PlayersTab({
     setTeamId(athlete.teamId || "");
     setPosition(athlete.position || "");
     setDob(athlete.dob);
+    setPhotoUrl(athlete.photoUrl || "");
   }
 
-  function cancelEdit() {
+  function closeModals() {
     setEditingId(null);
+    setShowAdd(false);
     setName("");
     setSex("male");
     setAgeGroup("");
     setTeamId("");
     setPosition("");
     setDob("");
+    setPhotoUrl("");
   }
 
-  function saveEdit() {
+  function handleSaveEdit() {
     if (!editingId || !name.trim() || !ageGroup.trim() || !dob.trim()) return;
     
     const team = teams.find((t) => t.id === teamId);
@@ -309,21 +465,12 @@ function PlayersTab({
       teamId: team?.id,
       position: position.trim() || undefined,
       dob: dob.trim(),
+      photoUrl: photoUrl || undefined,
     });
-    cancelEdit();
+    closeModals();
   }
 
-  function openAdd() {
-    setName("");
-    setSex("male");
-    setAgeGroup("");
-    setTeamId("");
-    setPosition("");
-    setDob("");
-    setShowAdd(true);
-  }
-
-  function saveAdd() {
+  function handleSaveAdd() {
     if (!name.trim() || !ageGroup.trim() || !dob.trim()) return;
     
     const team = teams.find((t) => t.id === teamId);
@@ -336,14 +483,9 @@ function PlayersTab({
       teamId: team?.id,
       position: position.trim() || undefined,
       dob: dob.trim(),
+      photoUrl: photoUrl || undefined,
     });
-    setName("");
-    setSex("male");
-    setAgeGroup("");
-    setTeamId("");
-    setPosition("");
-    setDob("");
-    setShowAdd(false);
+    closeModals();
   }
 
   const hasActiveFilters = searchQuery || filterTeam !== "all" || filterPosition !== "all";
@@ -354,7 +496,7 @@ function PlayersTab({
         <h2 className="text-xl font-semibold">{t("club.players")}</h2>
         <button
           type="button"
-          onClick={openAdd}
+          onClick={() => setShowAdd(true)}
           className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent/90"
         >
           <Plus className="h-4 w-4" />
@@ -371,7 +513,7 @@ function PlayersTab({
             placeholder={t("datahub.searchPlayerPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 rounded-lg border border-line px-3 py-2 text-sm"
+            className="flex-1 rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent/50 font-sans"
           />
           {hasActiveFilters && (
             <button
@@ -391,7 +533,7 @@ function PlayersTab({
           <select
             value={filterTeam}
             onChange={(e) => setFilterTeam(e.target.value)}
-            className="rounded-lg border border-line px-3 py-2 text-sm"
+            className="rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent/50 font-sans"
           >
             <option value="all">{t("datahub.allTeams")}</option>
             {teams.map((team) => (
@@ -401,7 +543,7 @@ function PlayersTab({
           <select
             value={filterPosition}
             onChange={(e) => setFilterPosition(e.target.value)}
-            className="rounded-lg border border-line px-3 py-2 text-sm"
+            className="rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent/50 font-sans"
           >
             <option value="all">{t("datahub.position")}</option>
             {positions.map((pos) => (
@@ -411,131 +553,462 @@ function PlayersTab({
         </div>
       </div>
 
-      {/* Add form */}
-      {showAdd && (
-        <div className="rounded-xl border border-line bg-white p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              type="text"
-              placeholder={t("datahub.playerName")}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="rounded-lg border border-line px-3 py-2 text-sm"
-            />
-            <select
-              value={sex}
-              onChange={(e) => setSex(e.target.value as "male" | "female")}
-              className="rounded-lg border border-line px-3 py-2 text-sm"
-            >
-              <option value="male">{t("datahub.male")}</option>
-              <option value="female">{t("datahub.female")}</option>
-            </select>
-            <input
-              type="text"
-              placeholder={t("datahub.ageGroup")}
-              value={ageGroup}
-              onChange={(e) => setAgeGroup(e.target.value)}
-              className="rounded-lg border border-line px-3 py-2 text-sm"
-            />
-            <select
-              value={teamId}
-              onChange={(e) => setTeamId(e.target.value)}
-              className="rounded-lg border border-line px-3 py-2 text-sm"
-            >
-              <option value="">{t("club.selectTeam")}</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>{team.name}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              placeholder={t("datahub.position")}
-              value={position}
-              onChange={(e) => setPosition(e.target.value)}
-              className="rounded-lg border border-line px-3 py-2 text-sm"
-            />
-            <input
-              type="date"
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              className="rounded-lg border border-line px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={saveAdd}
-              className="rounded-lg bg-accent px-4 py-2 text-sm text-white"
-            >
-              {t("common.save")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAdd(false)}
-              className="rounded-lg border border-line px-4 py-2 text-sm text-zinc-600"
-            >
-              {t("datahub.cancel")}
-            </button>
-          </div>
-        </div>
-      )}
-
       {filteredAthletes.length === 0 && (
         <p className="text-sm text-zinc-500">
           {hasActiveFilters ? t("datahub.noMatches") : t("club.noPlayers")}
         </p>
       )}
 
-      <div className="rounded-xl border border-line bg-white overflow-hidden">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-zinc-50">
-              <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.playerName")}</th>
-              <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.sex")}</th>
-              <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.team")}</th>
-              <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.position")}</th>
-              <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.birthDate")}</th>
-              <th className="w-20"></th>
-            </tr>
-          </thead>
-          <tbody suppressHydrationWarning>
-            {filteredAthletes.map((a) => {
-              const isEditing = editingId === a.id;
-              return (
-                <tr key={a.id} className="border-t border-line/50">
-                  <td className="px-4 py-3 font-medium text-zinc-900">{a.name}</td>
-                  <td className="px-4 py-3 text-zinc-600">{a.sex === "male" ? t("datahub.male") : t("datahub.female")}</td>
-                  <td className="px-4 py-3 text-zinc-600">{a.teamName ?? "—"}</td>
-                  <td className="px-4 py-3 text-zinc-600">{a.position ?? "—"}</td>
-                  <td className="px-4 py-3 text-zinc-600">{a.dob}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => isEditing ? cancelEdit() : openEdit(a)}
-                        className={cn(
-                          "rounded-full p-1 transition",
-                          isEditing
-                            ? "bg-zinc-200 text-zinc-700"
-                            : "hover:bg-blue-50 text-blue-600"
-                        )}
-                      >
-                        {isEditing ? <X className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteAthlete(a.id)}
-                        className="rounded-full p-1 hover:bg-red-50 text-red-500 transition"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
+      <div className="flex flex-col lg:flex-row gap-4">
+        <div className={cn("rounded-xl border border-line bg-white overflow-hidden flex-1", selectedAthleteId && "hidden lg:block lg:w-2/3")}>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-zinc-50">
+                  <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.playerName")}</th>
+                  <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.sex")}</th>
+                  <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.team")}</th>
+                  <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.position")}</th>
+                  <th className="text-left px-4 py-3 font-medium text-zinc-600">{t("datahub.birthDate")}</th>
+                  <th className="w-16"></th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody suppressHydrationWarning>
+                {filteredAthletes.map((a) => (
+                  <tr 
+                    key={a.id} 
+                    onClick={() => setSelectedAthleteId(a.id)}
+                    className={cn("border-t border-line/50 hover:bg-zinc-50/50 transition cursor-pointer", selectedAthleteId === a.id && "bg-accent/5")}
+                  >
+                    <td className="px-4 py-3 font-medium text-zinc-900">{a.name}</td>
+                    <td className="px-4 py-3 text-zinc-600">{a.sex === "male" ? t("datahub.male") : t("datahub.female")}</td>
+                    <td className="px-4 py-3 text-zinc-600">{a.teamName ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-600">{a.position ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-600">{a.dob}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openEdit(a); }}
+                        className="rounded-full p-2 hover:bg-accent/10 text-zinc-400 hover:text-accent transition"
+                        title={t("common.edit")}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {selectedAthlete && (
+          <div className="w-full lg:w-1/3 rounded-xl border border-line bg-white shadow-lg p-5 flex flex-col space-y-6 animate-in slide-in-from-right-4 duration-200 self-start">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {selectedAthlete.photoUrl ? (
+                    <img src={selectedAthlete.photoUrl} alt="Player avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    <User className="h-8 w-8 text-zinc-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-zinc-900 leading-tight">{selectedAthlete.name}</h3>
+                  <p className="text-sm text-zinc-500">{selectedAthlete.teamName ?? "—"}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAthleteId(null)}
+                className="rounded-full p-1.5 hover:bg-zinc-100 text-zinc-400 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-sm border-y border-line py-4">
+              <div>
+                <p className="text-zinc-500 text-xs mb-0.5">{t("datahub.position")}</p>
+                <p className="font-medium text-zinc-900">{selectedAthlete.position || "—"}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500 text-xs mb-0.5">{t("datahub.ageGroup")}</p>
+                <p className="font-medium text-zinc-900">{selectedAthlete.ageGroup || "—"}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500 text-xs mb-0.5">{t("datahub.sex")}</p>
+                <p className="font-medium text-zinc-900">{selectedAthlete.sex === "male" ? t("datahub.male") : t("datahub.female")}</p>
+              </div>
+              <div>
+                <p className="text-zinc-500 text-xs mb-0.5">{t("datahub.birthDate")}</p>
+                <p className="font-medium text-zinc-900">{selectedAthlete.dob}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-zinc-900">Análisis y Rendimiento</h4>
+              <button className="w-full flex items-center justify-between p-3 rounded-lg border border-line hover:border-accent hover:bg-accent/5 transition group">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-md bg-accent/10 text-accent">
+                    <BarChart2 className="h-4 w-4" />
+                  </div>
+                  <span className="font-medium text-zinc-700 group-hover:text-zinc-900 text-sm">Ver gráficas de rendimiento</span>
+                </div>
+                <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-accent" />
+              </button>
+              <button className="w-full flex items-center justify-between p-3 rounded-lg border border-line hover:border-accent hover:bg-accent/5 transition group">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-md bg-accent/10 text-accent">
+                    <Activity className="h-4 w-4" />
+                  </div>
+                  <span className="font-medium text-zinc-700 group-hover:text-zinc-900 text-sm">Evaluación y maduración</span>
+                </div>
+                <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-accent" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Add Player Modal */}
+      {showAdd && (
+        <Modal
+          title={t("datahub.addNewPlayerTitle")}
+          onClose={closeModals}
+        >
+          <div className="space-y-4">
+            {/* Excel Import/Export Section */}
+            <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 mb-2 shrink-0">
+              <p className="text-sm text-zinc-600 mb-3 text-center">
+                {t("datahub.bulkAddTitle")}
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={downloadTemplate}
+                  className="flex items-center gap-2 rounded-lg bg-white border border-line px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 transition shadow-sm"
+                >
+                  <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                  {t("common.downloadTemplate")}
+                </button>
+                <label className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 cursor-pointer transition shadow-sm">
+                  <UploadCloud className="h-4 w-4" />
+                  {t("datahub.uploadExcel")}
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls"
+                    className="hidden"
+                    onChange={handleImportExcel}
+                  />
+                </label>
+              </div>
+              {importFeedback && (
+                <div className={cn("mt-3 p-2 text-center text-sm font-medium rounded-lg", importFeedback.includes("✅") ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800")}>
+                  {importFeedback}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-4 py-1 shrink-0">
+              <div className="h-px bg-line flex-1"></div>
+              <span className="text-xs font-semibold uppercase text-zinc-400">{t("datahub.bulkAddManualOpts")}</span>
+              <div className="h-px bg-line flex-1"></div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.playerName")}</label>
+                <input
+                  type="text"
+                  placeholder={t("datahub.playerName")}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.sex")}</label>
+                <select
+                  value={sex}
+                  onChange={(e) => setSex(e.target.value as "male" | "female")}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                >
+                  <option value="male">{t("datahub.male")}</option>
+                  <option value="female">{t("datahub.female")}</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.ageGroup")}</label>
+                <input
+                  type="text"
+                  placeholder={t("datahub.ageGroup")}
+                  value={ageGroup}
+                  onChange={(e) => setAgeGroup(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.team")}</label>
+                <select
+                  value={teamId}
+                  onChange={(e) => setTeamId(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                >
+                  <option value="">{t("club.selectTeam")}</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.position")}</label>
+                <input
+                  type="text"
+                  placeholder={t("datahub.position")}
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.birthDate")}</label>
+                <input
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <label className="text-xs font-medium text-zinc-500 mb-1 block">{t("datahub.photoOptional")}</label>
+              <div className="flex items-center gap-4">
+                {photoUrl ? (
+                  <div className="h-12 w-12 rounded-full border border-line overflow-hidden flex-shrink-0 bg-white">
+                    <img src={photoUrl} alt="Player" className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="h-12 w-12 rounded-full border border-dashed border-zinc-300 flex items-center justify-center bg-zinc-50 flex-shrink-0">
+                    <User className="h-5 w-5 text-zinc-400" />
+                  </div>
+                )}
+                <label className="cursor-pointer rounded-lg border border-line bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 transition">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                  />
+                  {t("datahub.selectPhoto")}
+                </label>
+                {photoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setPhotoUrl("")}
+                    className="text-xs text-red-500 hover:underline"
+                  >
+                    {t("datahub.delete")}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t border-line">
+              <button
+                type="button"
+                onClick={handleSaveAdd}
+                className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
+              >
+                {t("common.save")}
+              </button>
+              <button
+                type="button"
+                onClick={closeModals}
+                className="flex-1 rounded-xl border border-line py-2.5 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-50"
+              >
+                {t("datahub.cancel")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit Player Modal */}
+      {editingId && (
+        <Modal
+          title={t("datahub.editPlayerTitle")}
+          onClose={closeModals}
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.playerName")}</label>
+                <input
+                  type="text"
+                  placeholder={t("datahub.playerName")}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.sex")}</label>
+                <select
+                  value={sex}
+                  onChange={(e) => setSex(e.target.value as "male" | "female")}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                >
+                  <option value="male">{t("datahub.male")}</option>
+                  <option value="female">{t("datahub.female")}</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.ageGroup")}</label>
+                <input
+                  type="text"
+                  placeholder={t("datahub.ageGroup")}
+                  value={ageGroup}
+                  onChange={(e) => setAgeGroup(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.team")}</label>
+                <select
+                  value={teamId}
+                  onChange={(e) => setTeamId(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                >
+                  <option value="">{t("club.selectTeam")}</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.position")}</label>
+                <input
+                  type="text"
+                  placeholder={t("datahub.position")}
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("datahub.birthDate")}</label>
+                <input
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50 font-sans"
+                />
+              </div>
+            </div>
+            
+            <div className="pt-2">
+              <label className="text-xs font-medium text-zinc-500 mb-1 block">{t("datahub.photoOptional")}</label>
+              <div className="flex items-center gap-4">
+                {photoUrl ? (
+                  <div className="h-12 w-12 rounded-full border border-line overflow-hidden flex-shrink-0 bg-white">
+                    <img src={photoUrl} alt="Player" className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="h-12 w-12 rounded-full border border-dashed border-zinc-300 flex items-center justify-center bg-zinc-50 flex-shrink-0">
+                    <User className="h-5 w-5 text-zinc-400" />
+                  </div>
+                )}
+                <label className="cursor-pointer rounded-lg border border-line bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 transition">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                  />
+                  {t("datahub.selectPhoto")}
+                </label>
+                {photoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setPhotoUrl("")}
+                    className="text-xs text-red-500 hover:underline"
+                  >
+                    {t("datahub.delete")}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-line flex flex-col gap-3">
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
+                >
+                  {t("common.save")}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeModals}
+                  className="flex-1 rounded-xl border border-line py-2.5 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-50"
+                >
+                  {t("datahub.cancel")}
+                </button>
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(t("common.confirmDelete") || "Are you sure?")) {
+                    deleteAthlete(editingId!);
+                    closeModals();
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 py-2 text-sm font-medium text-red-600 transition hover:bg-red-100"
+              >
+                <Trash2 className="h-4 w-4" />
+                {t("datahub.delete")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 transition-all animate-in fade-in duration-200">
+      <div 
+        className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-6 flex items-center justify-between shrink-0">
+          <h3 className="text-xl font-bold text-zinc-900">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition shrink-0"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="overflow-y-auto pr-2 -mr-2">
+          {children}
+        </div>
       </div>
     </div>
   );
