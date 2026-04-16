@@ -35,6 +35,7 @@ export interface Athlete {
   teamName?: string;
   position?: string;
   dob: string;
+  photoUrl?: string;
 }
 
 export interface AnthropometricRecordInput {

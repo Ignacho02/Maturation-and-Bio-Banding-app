@@ -167,7 +167,7 @@ export function Navbar() {
                                 aria-haspopup="true"
                                 aria-expanded={activeSubMenu === area.labelKey ? "true" : undefined}
                               >
-                                <span className="font-medium">{t(area.labelKey)}</span>
+                                <span className="text-sm font-medium">{t(area.labelKey)}</span>
                                 <span className="text-xs" aria-hidden="true">→</span>
                               </button>
                             ) : (
@@ -176,7 +176,7 @@ export function Navbar() {
                                 className="block px-4 py-3 text-sm text-zinc-700 hover:bg-accent/10 hover:text-accent rounded transition mb-1 last:mb-0"
                                 role="menuitem"
                               >
-                                <div className="font-medium">{t(area.labelKey)}</div>
+                                <span className="text-sm font-medium">{t(area.labelKey)}</span>
                               </Link>
                             )}
 
@@ -206,7 +206,7 @@ export function Navbar() {
                                           aria-haspopup="true"
                                           aria-expanded={activeThirdLevel === section.labelKey ? "true" : undefined}
                                         >
-                                          <span>{t(section.labelKey)}</span>
+                                          <span className="text-sm font-medium">{t(section.labelKey)}</span>
                                           <span className="text-xs" aria-hidden="true">→</span>
                                         </button>
                                       ) : (
@@ -215,7 +215,7 @@ export function Navbar() {
                                           className="block px-4 py-2 text-sm text-zinc-700 hover:bg-accent/10 hover:text-accent rounded transition"
                                           role="menuitem"
                                         >
-                                          {t(section.labelKey)}
+                                          <span className="text-sm font-medium">{t(section.labelKey)}</span>
                                         </Link>
                                       )}
 
@@ -234,7 +234,7 @@ export function Navbar() {
                                                 className="block px-4 py-2 text-sm text-zinc-700 hover:bg-accent/10 hover:text-accent rounded transition"
                                                 role="menuitem"
                                               >
-                                                {t(subSection.labelKey)}
+                                                <span className="text-sm font-medium">{t(subSection.labelKey)}</span>
                                               </Link>
                                             ))}
                                           </div>

@@ -976,7 +976,7 @@ export function MaturationSection({
                     type="text"
                     readOnly
                     value={maturationForm.athleteName}
-                    className="mt-1 w-full rounded-lg border border-line bg-zinc-50 px-3 py-2 text-zinc-500"
+                    className="mt-1 w-full rounded-lg border border-line bg-zinc-50 px-3 py-2 text-zinc-500 font-sans"
                   />
                 </div>
 
@@ -986,7 +986,7 @@ export function MaturationSection({
                     id="edit-player-sex"
                     value={maturationForm.sex}
                     onChange={(e) => setMaturationValue("sex", e.target.value as "male" | "female")}
-                    className="mt-1 w-full rounded-lg border border-line px-3 py-2"
+                    className="mt-1 w-full rounded-lg border border-line px-3 py-2 font-sans"
                   >
                     <option value="male">{t("datahub.male")}</option>
                     <option value="female">{t("datahub.female")}</option>
@@ -1000,7 +1000,7 @@ export function MaturationSection({
                     type="text"
                     value={maturationForm.ageGroup}
                     onChange={(e) => setMaturationValue("ageGroup", e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-line px-3 py-2 placeholder:text-zinc-500"
+                    className="mt-1 w-full rounded-lg border border-line px-3 py-2 placeholder:text-zinc-500 font-sans"
                   />
                 </div>
 
@@ -1011,7 +1011,7 @@ export function MaturationSection({
                     type="text"
                     value={maturationForm.teamName || ""}
                     onChange={(e) => setMaturationValue("teamName", e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-line px-3 py-2 placeholder:text-zinc-500"
+                    className="mt-1 w-full rounded-lg border border-line px-3 py-2 placeholder:text-zinc-500 font-sans"
                   />
                 </div>
 
@@ -1022,7 +1022,7 @@ export function MaturationSection({
                     type="text"
                     value={maturationForm.position || ""}
                     onChange={(e) => setMaturationValue("position", e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-line px-3 py-2 placeholder:text-zinc-500"
+                    className="mt-1 w-full rounded-lg border border-line px-3 py-2 placeholder:text-zinc-500 font-sans"
                   />
                 </div>
 
@@ -1033,7 +1033,7 @@ export function MaturationSection({
                     type="date"
                     value={maturationForm.dob}
                     onChange={(e) => setMaturationValue("dob", e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-line px-3 py-2 placeholder:text-zinc-500"
+                    className="mt-1 w-full rounded-lg border border-line px-3 py-2 placeholder:text-zinc-500 font-sans"
                   />
                 </div>
               </div>
@@ -1163,10 +1163,10 @@ function AddPlayerFormBody({
     <>
       <div className="grid gap-4 md:grid-cols-2">
         <Field label={t("datahub.playerName")}>
-          <input type="text" required placeholder={t("datahub.examplePlayerName")} value={maturationForm.athleteName} onChange={(e) => setMaturationValue("athleteName", e.target.value)} className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" />
+          <input type="text" required placeholder={t("datahub.examplePlayerName")} value={maturationForm.athleteName} onChange={(e) => setMaturationValue("athleteName", e.target.value)} className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700 font-sans" />
         </Field>
         <Field label={t("datahub.sex")}>
-          <select required value={maturationForm.sex} onChange={(e) => setMaturationValue("sex", e.target.value as "male" | "female")} className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700">
+          <select required value={maturationForm.sex} onChange={(e) => setMaturationValue("sex", e.target.value as "male" | "female")} className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700 font-sans">
             <option value="male">{t("datahub.male")}</option>
             <option value="female">{t("datahub.female")}</option>
           </select>
@@ -1248,7 +1248,7 @@ function AthleteSelector({
               });
             }
           }}
-          className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700"
+          className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700 font-sans"
         >
           <option value="" disabled>{t("datahub.selectAthlete")}</option>
           {athletes.map((a) => (
