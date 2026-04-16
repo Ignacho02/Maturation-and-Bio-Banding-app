@@ -113,7 +113,7 @@ export function ClubSection() {
       )}
 
       {activeTab === "structure" && structureSubTab === "teams" && (
-        <TeamsTab teams={state.teams} addTeam={addTeam} updateTeam={updateTeam} deleteTeam={deleteTeam} />
+        <TeamsTab teams={state.teams} athletes={state.athletes} addTeam={addTeam} updateTeam={updateTeam} deleteTeam={deleteTeam} />
       )}
       {activeTab === "structure" && structureSubTab === "players" && (
         <PlayersTab
@@ -148,98 +148,458 @@ export function ClubSection() {
 
 function TeamsTab({
   teams,
+  athletes,
   addTeam,
   updateTeam,
   deleteTeam,
 }: {
-  teams: Array<{ id: string; name: string; ageGroup: string; clubId: string }>;
-  addTeam: (team: { name: string; ageGroup: string; clubId: string }) => void;
-  updateTeam: (id: string, updates: { name?: string; ageGroup?: string }) => void;
+  teams: Array<{ id: string; name: string; ageGroup: string; clubId: string; photoUrl?: string }>;
+  athletes: Array<{ id: string; name: string; teamId?: string; photoUrl?: string; position?: string; displayOrder?: number; category?: string }>;
+  addTeam: (team: { name: string; ageGroup: string; clubId: string; photoUrl?: string }) => void;
+  updateTeam: (id: string, updates: { name?: string; ageGroup?: string; photoUrl?: string }) => void;
   deleteTeam: (id: string) => void;
 }) {
   const { t } = useLocale();
-  const { state } = useAppState();
+  const { state, updateAthlete } = useAppState();
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newAgeGroup, setNewAgeGroup] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Form state
+  const [name, setName] = useState("");
+  const [ageGroup, setAgeGroup] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
+
+  const selectedTeam = teams.find(t => t.id === selectedTeamId);
+  const teamRoster = athletes.filter(a => a.teamId === selectedTeamId);
+
+  // Grouping logic
+  const getCategory = (athlete: typeof athletes[0]) => {
+    // 1. Prioritize explicit manual category
+    if (athlete.category) return athlete.category;
+    
+    // 2. Fallback to auto-detection from position string
+    const p = (athlete.position || "").toLowerCase().trim();
+    if (/medio|midf|mc|mcd|mco|vol|piv|interior/i.test(p)) return "posMID";
+    if (/^def|defensa|lat|centr|zaguero|ld|li|rb|lb|cb/i.test(p)) return "posDEF";
+    if (/port|goalk|gk|por/i.test(p)) return "posGK";
+    if (/delant|forw|strik|extr|wing|fwd|punta/i.test(p)) return "posFWD";
+    return "posOTHER";
+  };
+
+  const categories = ["posGK", "posDEF", "posMID", "posFWD", "posOTHER"];
+  
+  // Build a categorized roster
+  const categorizedSquad = categories.map(cat => {
+    const playersInCat = teamRoster.filter(a => getCategory(a) === cat);
+    // Sort players within each category by displayOrder
+    return {
+      id: cat,
+      label: t(`datahub.${cat}`),
+      players: [...playersInCat].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+    };
+  });
+
+  const groupedSquad = categorizedSquad.filter(group => group.players.length > 0);
+
+  function moveAthlete(athleteId: string, direction: "up" | "down") {
+    const athlete = teamRoster.find(a => a.id === athleteId);
+    if (!athlete) return;
+    
+    const currentCat = getCategory(athlete);
+    const catIndex = categories.indexOf(currentCat);
+    const playersInCurrentCat = groupedSquad.find(g => g.id === currentCat)?.players || [];
+    const indexInCat = playersInCurrentCat.findIndex(a => a.id === athleteId);
+
+    if (direction === "up") {
+      if (indexInCat > 0) {
+        // Swap within same category
+        const prev = playersInCurrentCat[indexInCat - 1];
+        const newOrder = prev.displayOrder || 0;
+        const currentOrder = athlete.displayOrder || indexInCat;
+        updateAthlete(athlete.id, { displayOrder: newOrder });
+        updateAthlete(prev.id, { displayOrder: currentOrder });
+      } else if (catIndex > 0) {
+        // Find previous category that has players OR just the previous one if we want to "jump"
+        const prevCat = categories[catIndex - 1];
+        // Move to the previous category, at the end
+        const playersInPrev = categorizedSquad.find(g => g.id === prevCat)?.players || [];
+        const lastOrder = playersInPrev.length > 0 
+          ? Math.max(...playersInPrev.map(p => p.displayOrder || 0)) + 1
+          : 0;
+        updateAthlete(athlete.id, { category: prevCat, displayOrder: lastOrder });
+      }
+    } else {
+      // Down
+      if (indexInCat < playersInCurrentCat.length - 1) {
+        const next = playersInCurrentCat[indexInCat + 1];
+        const newOrder = next.displayOrder || 0;
+        const currentOrder = athlete.displayOrder || indexInCat;
+        updateAthlete(athlete.id, { displayOrder: newOrder });
+        updateAthlete(next.id, { displayOrder: currentOrder });
+      } else if (catIndex < categories.length - 1) {
+        const nextCat = categories[catIndex + 1];
+        updateAthlete(athlete.id, { category: nextCat, displayOrder: 0 }); // Move to start of next
+      }
+    }
+  }
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoUrl(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  function openEdit(team: typeof teams[0]) {
+    setEditingId(team.id);
+    setName(team.name);
+    setAgeGroup(team.ageGroup);
+    setPhotoUrl(team.photoUrl || "");
+  }
+
+  function closeModals() {
+    setShowAdd(false);
+    setEditingId(null);
+    setName("");
+    setAgeGroup("");
+    setPhotoUrl("");
+  }
+
+  function handleSaveAdd() {
+    if (!name.trim() || !ageGroup.trim()) return;
+    addTeam({ name: name.trim(), ageGroup: ageGroup.trim(), clubId: state.club.id, photoUrl: photoUrl || undefined });
+    closeModals();
+  }
+
+  function handleSaveEdit() {
+    if (!editingId || !name.trim() || !ageGroup.trim()) return;
+    updateTeam(editingId, { name: name.trim(), ageGroup: ageGroup.trim(), photoUrl: photoUrl || undefined });
+    closeModals();
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">{t("club.teams")}</h2>
-        <button
-          type="button"
-          onClick={() => setShowAdd(true)}
-          className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent/90"
-        >
-          <Plus className="h-4 w-4" />
-          {t("club.addTeam")}
-        </button>
+    <div className="flex flex-col lg:flex-row gap-6 min-h-[500px] animate-in slide-in-from-right-4 duration-500">
+      {/* List Area */}
+      <div className={cn("flex-1 space-y-4", selectedTeamId && "hidden lg:block")}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">{t("club.teams")}</h2>
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent/90 shrink-0"
+          >
+            <Plus className="h-4 w-4" />
+            {t("club.addTeam")}
+          </button>
+        </div>
+
+        {teams.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/50">
+            <Users className="h-10 w-10 text-zinc-300 mb-3" />
+            <p className="text-sm text-zinc-500">{t("club.noTeams")}</p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {teams.map((team) => (
+              <button
+                key={team.id}
+                onClick={() => setSelectedTeamId(team.id === selectedTeamId ? null : team.id)}
+                className={cn(
+                  "group relative flex flex-col items-start rounded-2xl border p-4 text-left transition-all duration-300 hover:shadow-md",
+                  selectedTeamId === team.id
+                    ? "border-accent bg-accent/[0.03] ring-1 ring-accent/20"
+                    : "border-line bg-white hover:border-accent/40"
+                )}
+              >
+                <div className="flex w-full items-start gap-3">
+                  <div className="h-12 w-12 rounded-xl bg-zinc-100 border border-zinc-200 flex items-center justify-center overflow-hidden shrink-0">
+                    {team.photoUrl ? (
+                      <img src={team.photoUrl} alt={team.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <Shield className="h-6 w-6 text-zinc-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 pr-6">
+                    <h3 className="font-bold text-zinc-900 group-hover:text-accent transition truncate leading-tight">{team.name}</h3>
+                    <p className="text-xs font-medium text-zinc-500 mt-0.5">{t("club.ageGroup")}: {team.ageGroup}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex -space-x-2">
+                        {athletes.filter(a => a.teamId === team.id).slice(0, 3).map((a, idx) => (
+                          <div key={idx} className="h-6 w-6 rounded-full border-2 border-white bg-zinc-100 overflow-hidden ring-1 ring-zinc-100">
+                             {a.photoUrl ? (
+                               <img src={a.photoUrl} alt="" className="h-full w-full object-cover" />
+                             ) : (
+                               <User className="h-3.5 w-3.5 text-zinc-400 m-auto mt-0.5" />
+                             )}
+                          </div>
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-zinc-400 font-medium lowercase">
+                        {athletes.filter(a => a.teamId === team.id).length} {t("datahub.squad").toLowerCase()}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight className={cn(
+                    "absolute top-4 right-4 h-4 w-4 text-zinc-300 transition-all group-hover:text-accent",
+                    selectedTeamId === team.id && "rotate-90 text-accent"
+                  )} />
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {showAdd && (
-        <div className="rounded-xl border border-line bg-white p-4 space-y-3">
-          <input
-            type="text"
-            placeholder={t("club.teamNamePlaceholder")}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="w-full rounded-lg border border-line px-3 py-2 text-sm"
-          />
-          <input
-            type="text"
-            placeholder={t("club.ageGroupPlaceholder")}
-            value={newAgeGroup}
-            onChange={(e) => setNewAgeGroup(e.target.value)}
-            className="w-full rounded-lg border border-line px-3 py-2 text-sm"
-          />
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (newName.trim()) {
-                  addTeam({ name: newName.trim(), ageGroup: newAgeGroup.trim(), clubId: state.club.id });
-                  setNewName("");
-                  setNewAgeGroup("");
-                  setShowAdd(false);
-                }
-              }}
-              className="rounded-lg bg-accent px-4 py-2 text-sm text-white"
-            >
-              {t("common.save")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAdd(false)}
-              className="rounded-lg border border-line px-4 py-2 text-sm text-zinc-600"
-            >
-              {t("datahub.cancel")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {teams.length === 0 && (
-        <p className="text-sm text-zinc-500">{t("club.noTeams")}</p>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {teams.map((team) => (
-          <div key={team.id} className="rounded-xl border border-line bg-white p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-zinc-900">{team.name}</h3>
-              <button
-                type="button"
-                onClick={() => deleteTeam(team.id)}
-                className="rounded-full p-1 hover:bg-red-50 text-red-500 transition"
+      {/* Detail Area (Side Panel) */}
+      <div className={cn(
+        "lg:w-96 shrink-0 lg:sticky lg:top-0 h-fit",
+        !selectedTeamId && "hidden"
+      )}>
+        {selectedTeam && (
+          <div className="rounded-[2rem] border border-line bg-white p-6 shadow-xl space-y-6 animate-in slide-in-from-right-10 duration-500 overflow-hidden">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-2xl bg-zinc-100 border border-zinc-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {selectedTeam.photoUrl ? (
+                    <img src={selectedTeam.photoUrl} alt={selectedTeam.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <Shield className="h-8 w-8 text-zinc-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-zinc-900 leading-tight">{selectedTeam.name}</h3>
+                  <p className="text-sm font-medium text-accent">{selectedTeam.ageGroup}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedTeamId(null)}
+                className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-zinc-100 text-zinc-400 lg:hidden"
               >
-                <Trash2 className="h-4 w-4" />
+                <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-sm text-zinc-500">{t("club.ageGroup")}: {team.ageGroup}</p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button 
+                onClick={() => openEdit(selectedTeam)}
+                className="flex items-center justify-center gap-2 rounded-xl bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-200"
+              >
+                <Edit2 className="h-4 w-4" />
+                {t("datahub.editPlayerTitle").replace(t("datahub.player").toLowerCase(), t("datahub.team").toLowerCase())}
+              </button>
+              <button 
+                onClick={() => {
+                   if (confirm(t("common.confirmDelete") || "Are you sure?")) {
+                     deleteTeam(selectedTeam.id);
+                     setSelectedTeamId(null);
+                   }
+                }}
+                className="flex items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100/50"
+              >
+                <Trash2 className="h-4 w-4" />
+                {t("datahub.delete")}
+              </button>
+            </div>
+
+            <div className="space-y-6 overflow-y-auto max-h-[450px] pr-2 -mr-2">
+              <div className="flex items-center justify-between border-b border-line pb-2">
+                 <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">{t("datahub.squad")} ({teamRoster.length})</h4>
+              </div>
+
+              {teamRoster.length === 0 ? (
+                <p className="text-xs text-zinc-400 italic py-4 text-center">No players assigned yet</p>
+              ) : (
+                <div className="space-y-6">
+                  {groupedSquad.map(group => (
+                    <div key={group.id} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-accent" />
+                        <h5 className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">{group.label}</h5>
+                        <div className="h-px bg-zinc-100 flex-1" />
+                      </div>
+                      <div className="grid gap-2">
+                        {group.players.map((player, idx) => {
+                          return (
+                            <div key={player.id} className="flex items-center gap-3 p-2 rounded-xl border border-transparent hover:bg-zinc-50 transition group/item">
+                              <div className="h-8 w-8 rounded-full bg-zinc-100 overflow-hidden shrink-0 border border-zinc-200">
+                                {player.photoUrl ? (
+                                  <img src={player.photoUrl} alt="" className="h-full w-full object-cover" />
+                                ) : (
+                                  <User className="h-4 w-4 text-zinc-400 m-auto mt-1" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-zinc-700 truncate">{player.name}</p>
+                                <p className="text-[10px] text-zinc-400 font-medium">{player.position || "N/A"}</p>
+                              </div>
+                              <div className="hidden group-hover/item:flex items-center gap-1">
+                                <select 
+                                  value={getCategory(player)}
+                                  onChange={(e) => updateAthlete(player.id, { category: e.target.value })}
+                                  className="text-[10px] bg-white border border-line rounded px-1 py-0.5 outline-none focus:border-accent text-zinc-500"
+                                >
+                                  {categories.map(cat => (
+                                    <option key={cat} value={cat}>{t(`datahub.${cat}`)}</option>
+                                  ))}
+                                </select>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); moveAthlete(player.id, "up"); }}
+                                  disabled={categories.indexOf(getCategory(player)) === 0 && idx === 0}
+                                  className="p-1 hover:bg-white rounded border border-line text-zinc-400 hover:text-accent disabled:opacity-30 disabled:hover:bg-transparent"
+                                >
+                                  <ChevronRight className="h-3 w-3 -rotate-90" />
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); moveAthlete(player.id, "down"); }}
+                                  disabled={categories.indexOf(getCategory(player)) === categories.length - 1 && idx === group.players.length - 1}
+                                  className="p-1 hover:bg-white rounded border border-line text-zinc-400 hover:text-accent disabled:opacity-30 disabled:hover:bg-transparent"
+                                >
+                                  <ChevronRight className="h-3 w-3 rotate-90" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        ))}
+        )}
       </div>
+
+      {/* Add Team Modal */}
+      {showAdd && (
+        <Modal title={t("club.addTeam")} onClose={closeModals}>
+          <div className="space-y-4">
+             <div className="grid grid-cols-2 gap-4">
+               <div className="space-y-1">
+                 <label className="text-xs font-medium text-zinc-500">{t("club.teamNamePlaceholder")}</label>
+                 <input 
+                  type="text"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50"
+                  autoFocus
+                 />
+               </div>
+               <div className="space-y-1">
+                 <label className="text-xs font-medium text-zinc-500">{t("club.ageGroupPlaceholder")}</label>
+                 <input 
+                  type="text"
+                  value={ageGroup}
+                  onChange={e => setAgeGroup(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50"
+                 />
+               </div>
+             </div>
+
+             <div className="pt-2">
+              <label className="text-xs font-medium text-zinc-500 mb-1 block">Team Photo (optional)</label>
+              <div className="flex items-center gap-4">
+                {photoUrl ? (
+                  <div className="h-12 w-12 rounded-xl border border-line overflow-hidden flex-shrink-0 bg-white">
+                    <img src={photoUrl} alt="Team" className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="h-12 w-12 rounded-xl border border-dashed border-zinc-300 flex items-center justify-center bg-zinc-50 flex-shrink-0">
+                    <Shield className="h-5 w-5 text-zinc-400" />
+                  </div>
+                )}
+                <label className="cursor-pointer rounded-lg border border-line bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 transition">
+                  <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                  {t("datahub.selectPhoto")}
+                </label>
+                {photoUrl && (
+                  <button type="button" onClick={() => setPhotoUrl("")} className="text-xs text-red-500 hover:underline">
+                    {t("datahub.delete")}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t border-line">
+              <button 
+                onClick={handleSaveAdd}
+                className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
+              >
+                {t("common.save")}
+              </button>
+              <button onClick={closeModals} className="flex-1 rounded-xl border border-line py-2.5 text-sm font-semibold text-zinc-600">
+                {t("datahub.cancel")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit Team Modal */}
+      {editingId && (
+        <Modal title={t("datahub.editPlayerTitle").replace(t("datahub.player").toLowerCase(), t("datahub.team").toLowerCase())} onClose={closeModals}>
+           <div className="space-y-4">
+             <div className="grid grid-cols-2 gap-4">
+               <div className="space-y-1">
+                 <label className="text-xs font-medium text-zinc-500">{t("club.teamNamePlaceholder")}</label>
+                 <input 
+                  type="text"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50"
+                 />
+               </div>
+               <div className="space-y-1">
+                 <label className="text-xs font-medium text-zinc-500">{t("club.ageGroupPlaceholder")}</label>
+                 <input 
+                  type="text"
+                  value={ageGroup}
+                  onChange={e => setAgeGroup(e.target.value)}
+                  className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50"
+                 />
+               </div>
+             </div>
+
+             <div className="pt-2">
+              <label className="text-xs font-medium text-zinc-500 mb-1 block">Team Photo (optional)</label>
+              <div className="flex items-center gap-4">
+                {photoUrl ? (
+                  <div className="h-12 w-12 rounded-xl border border-line overflow-hidden flex-shrink-0 bg-white">
+                    <img src={photoUrl} alt="Team" className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="h-12 w-12 rounded-xl border border-dashed border-zinc-300 flex items-center justify-center bg-zinc-50 flex-shrink-0">
+                    <Shield className="h-5 w-5 text-zinc-400" />
+                  </div>
+                )}
+                <label className="cursor-pointer rounded-lg border border-line bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 transition">
+                  <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                  {t("datahub.selectPhoto")}
+                </label>
+                {photoUrl && (
+                  <button type="button" onClick={() => setPhotoUrl("")} className="text-xs text-red-500 hover:underline">
+                    {t("datahub.delete")}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t border-line">
+              <button 
+                onClick={handleSaveEdit}
+                className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
+              >
+                {t("common.save")}
+              </button>
+              <button onClick={closeModals} className="flex-1 rounded-xl border border-line py-2.5 text-sm font-semibold text-zinc-600">
+                {t("datahub.cancel")}
+              </button>
+            </div>
+           </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1218,7 +1578,7 @@ function TestBatteryTab({
               : "bg-accent text-white hover:bg-accent/90"
           )}
         >
-          <Plus className="h-4 w-4" />
+          {showAddTestForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
           {showAddTestForm ? t("datahub.cancel") : t("club.addTest")}
         </button>
       </div>
@@ -1346,8 +1706,14 @@ function TestBatteryTab({
                 <div>
                   <label className="block text-sm font-medium text-zinc-700 mb-2">{t("datahub.attemptsCalculation")}</label>
                   <select
-                    className="w-full rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700"
-                    value={newDef.calculation}
+                    className={cn(
+                      "w-full rounded-2xl border border-line px-4 py-3 text-zinc-700 transition",
+                      newDef.attempts === 1
+                        ? "bg-zinc-100 opacity-50 cursor-not-allowed"
+                        : "bg-white/70"
+                    )}
+                    value={newDef.attempts === 1 ? "best_max" : newDef.calculation}
+                    disabled={newDef.attempts === 1}
                     onChange={e => setNewDef(c => ({ ...c, calculation: e.target.value as "best_min" | "best_max" | "average" }))}
                   >
                     <option value="best_min">{t("datahub.calcBestMin")}</option>

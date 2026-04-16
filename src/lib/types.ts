@@ -22,6 +22,7 @@ export interface Team {
   clubId: string;
   name: string;
   ageGroup: string;
+  photoUrl?: string;
 }
 
 export interface Athlete {
@@ -36,6 +37,8 @@ export interface Athlete {
   position?: string;
   dob: string;
   photoUrl?: string;
+  displayOrder?: number;
+  category?: string;
 }
 
 export interface AnthropometricRecordInput {
