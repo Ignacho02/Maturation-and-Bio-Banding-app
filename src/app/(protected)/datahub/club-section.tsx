@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { useAppState } from "@/lib/store/app-state";
 import { cn } from "@/lib/utils";
-import { Beaker, Plus, Trash2, Users, Palette, Shield, Edit2, Search, X, Check, User, BarChart2, Activity, ChevronRight, FileSpreadsheet, UploadCloud } from "lucide-react";
+import { Beaker, Plus, Trash2, Users, Palette, Shield, Edit2, Search, X, Check, User, BarChart2, Activity, ChevronRight, FileSpreadsheet, UploadCloud, Eye, Play, FileText } from "lucide-react";
 import type { PerformanceArea, PerformanceDefinition } from "@/lib/types";
 import { performancePresets, performanceAreaLabels } from "./performance-constants";
 
@@ -22,7 +22,8 @@ export function ClubSection() {
   const [structureSubTab, setStructureSubTab] = useState<"teams" | "players">("players");
   const [testBatteryArea, setTestBatteryArea] = useState<PerformanceArea>("physical");
   const [showAddTestForm, setShowAddTestForm] = useState(false);
-  const [newDef, setNewDef] = useState({ name: "", unit: "", attempts: 1, isRating: false, calculation: "best_min" as "best_min" | "best_max" | "average", description: "", mediaUrl: "", mediaType: undefined as "image" | "video" | undefined });
+  const [newDef, setNewDef] = useState({ name: "", nameKey: undefined as string | undefined, descriptionKey: undefined as string | undefined, unit: "", attempts: 1, isRating: false, scoringStrategy: "best" as "best" | "average", interpretation: "higher_better" as "higher_better" | "lower_better", description: "", mediaUrl: "", mediaType: undefined as "image" | "video" | undefined, subCategory: undefined as string | undefined });
+  const [selectedDef, setSelectedDef] = useState<PerformanceDefinition | null>(null);
 
   const testDefs = state.performanceDefinitions;
 
@@ -32,16 +33,19 @@ export function ClubSection() {
     if (!n || !u) return;
     addPerformanceDefinition({
       name: n,
+      nameKey: newDef.nameKey,
       area: testBatteryArea,
       unit: u,
       attempts: newDef.attempts,
       isRating: newDef.isRating,
-      calculation: newDef.calculation,
+      scoringStrategy: newDef.scoringStrategy,
+      interpretation: newDef.interpretation,
       description: newDef.description || undefined,
+      descriptionKey: newDef.descriptionKey,
       mediaUrl: newDef.mediaUrl || undefined,
       mediaType: newDef.mediaType,
     });
-    setNewDef({ name: "", unit: "", attempts: 1, isRating: false, calculation: "best_min", description: "", mediaUrl: "", mediaType: undefined });
+    setNewDef({ name: "", nameKey: undefined, descriptionKey: undefined, unit: "", attempts: 1, isRating: false, scoringStrategy: "best", interpretation: "higher_better", description: "", mediaUrl: "", mediaType: undefined, subCategory: undefined });
     setShowAddTestForm(false);
   }
 
@@ -164,7 +168,7 @@ function TeamsTab({
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
+
   // Form state
   const [name, setName] = useState("");
   const [ageGroup, setAgeGroup] = useState("");
@@ -177,7 +181,7 @@ function TeamsTab({
   const getCategory = (athlete: typeof athletes[0]) => {
     // 1. Prioritize explicit manual category
     if (athlete.category) return athlete.category;
-    
+
     // 2. Fallback to auto-detection from position string
     const p = (athlete.position || "").toLowerCase().trim();
     if (/medio|midf|mc|mcd|mco|vol|piv|interior/i.test(p)) return "posMID";
@@ -188,7 +192,7 @@ function TeamsTab({
   };
 
   const categories = ["posGK", "posDEF", "posMID", "posFWD", "posOTHER"];
-  
+
   // Build a categorized roster
   const categorizedSquad = categories.map(cat => {
     const playersInCat = teamRoster.filter(a => getCategory(a) === cat);
@@ -205,7 +209,7 @@ function TeamsTab({
   function moveAthlete(athleteId: string, direction: "up" | "down") {
     const athlete = teamRoster.find(a => a.id === athleteId);
     if (!athlete) return;
-    
+
     const currentCat = getCategory(athlete);
     const catIndex = categories.indexOf(currentCat);
     const playersInCurrentCat = groupedSquad.find(g => g.id === currentCat)?.players || [];
@@ -224,7 +228,7 @@ function TeamsTab({
         const prevCat = categories[catIndex - 1];
         // Move to the previous category, at the end
         const playersInPrev = categorizedSquad.find(g => g.id === prevCat)?.players || [];
-        const lastOrder = playersInPrev.length > 0 
+        const lastOrder = playersInPrev.length > 0
           ? Math.max(...playersInPrev.map(p => p.displayOrder || 0)) + 1
           : 0;
         updateAthlete(athlete.id, { category: prevCat, displayOrder: lastOrder });
@@ -328,11 +332,11 @@ function TeamsTab({
                       <div className="flex -space-x-2">
                         {athletes.filter(a => a.teamId === team.id).slice(0, 3).map((a, idx) => (
                           <div key={idx} className="h-6 w-6 rounded-full border-2 border-white bg-zinc-100 overflow-hidden ring-1 ring-zinc-100">
-                             {a.photoUrl ? (
-                               <img src={a.photoUrl} alt="" className="h-full w-full object-cover" />
-                             ) : (
-                               <User className="h-3.5 w-3.5 text-zinc-400 m-auto mt-0.5" />
-                             )}
+                            {a.photoUrl ? (
+                              <img src={a.photoUrl} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <User className="h-3.5 w-3.5 text-zinc-400 m-auto mt-0.5" />
+                            )}
                           </div>
                         ))}
                       </div>
@@ -373,7 +377,7 @@ function TeamsTab({
                   <p className="text-sm font-medium text-accent">{selectedTeam.ageGroup}</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setSelectedTeamId(null)}
                 className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-zinc-100 text-zinc-400 lg:hidden"
               >
@@ -382,19 +386,19 @@ function TeamsTab({
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <button 
+              <button
                 onClick={() => openEdit(selectedTeam)}
                 className="flex items-center justify-center gap-2 rounded-xl bg-zinc-100 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-200"
               >
                 <Edit2 className="h-4 w-4" />
                 {t("datahub.editPlayerTitle").replace(t("datahub.player").toLowerCase(), t("datahub.team").toLowerCase())}
               </button>
-              <button 
+              <button
                 onClick={() => {
-                   if (confirm(t("common.confirmDelete") || "Are you sure?")) {
-                     deleteTeam(selectedTeam.id);
-                     setSelectedTeamId(null);
-                   }
+                  if (confirm(t("common.confirmDelete") || "Are you sure?")) {
+                    deleteTeam(selectedTeam.id);
+                    setSelectedTeamId(null);
+                  }
                 }}
                 className="flex items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100/50"
               >
@@ -405,7 +409,7 @@ function TeamsTab({
 
             <div className="space-y-6 overflow-y-auto max-h-[450px] pr-2 -mr-2">
               <div className="flex items-center justify-between border-b border-line pb-2">
-                 <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">{t("datahub.squad")} ({teamRoster.length})</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">{t("datahub.squad")} ({teamRoster.length})</h4>
               </div>
 
               {teamRoster.length === 0 ? (
@@ -435,23 +439,14 @@ function TeamsTab({
                                 <p className="text-[10px] text-zinc-400 font-medium">{player.position || "N/A"}</p>
                               </div>
                               <div className="hidden group-hover/item:flex items-center gap-1">
-                                <select 
-                                  value={getCategory(player)}
-                                  onChange={(e) => updateAthlete(player.id, { category: e.target.value })}
-                                  className="text-[10px] bg-white border border-line rounded px-1 py-0.5 outline-none focus:border-accent text-zinc-500"
-                                >
-                                  {categories.map(cat => (
-                                    <option key={cat} value={cat}>{t(`datahub.${cat}`)}</option>
-                                  ))}
-                                </select>
-                                <button 
+                                <button
                                   onClick={(e) => { e.stopPropagation(); moveAthlete(player.id, "up"); }}
                                   disabled={categories.indexOf(getCategory(player)) === 0 && idx === 0}
                                   className="p-1 hover:bg-white rounded border border-line text-zinc-400 hover:text-accent disabled:opacity-30 disabled:hover:bg-transparent"
                                 >
                                   <ChevronRight className="h-3 w-3 -rotate-90" />
                                 </button>
-                                <button 
+                                <button
                                   onClick={(e) => { e.stopPropagation(); moveAthlete(player.id, "down"); }}
                                   disabled={categories.indexOf(getCategory(player)) === categories.length - 1 && idx === group.players.length - 1}
                                   className="p-1 hover:bg-white rounded border border-line text-zinc-400 hover:text-accent disabled:opacity-30 disabled:hover:bg-transparent"
@@ -476,29 +471,29 @@ function TeamsTab({
       {showAdd && (
         <Modal title={t("club.addTeam")} onClose={closeModals}>
           <div className="space-y-4">
-             <div className="grid grid-cols-2 gap-4">
-               <div className="space-y-1">
-                 <label className="text-xs font-medium text-zinc-500">{t("club.teamNamePlaceholder")}</label>
-                 <input 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("club.teamNamePlaceholder")}</label>
+                <input
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50"
                   autoFocus
-                 />
-               </div>
-               <div className="space-y-1">
-                 <label className="text-xs font-medium text-zinc-500">{t("club.ageGroupPlaceholder")}</label>
-                 <input 
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("club.ageGroupPlaceholder")}</label>
+                <input
                   type="text"
                   value={ageGroup}
                   onChange={e => setAgeGroup(e.target.value)}
                   className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50"
-                 />
-               </div>
-             </div>
+                />
+              </div>
+            </div>
 
-             <div className="pt-2">
+            <div className="pt-2">
               <label className="text-xs font-medium text-zinc-500 mb-1 block">Team Photo (optional)</label>
               <div className="flex items-center gap-4">
                 {photoUrl ? (
@@ -523,7 +518,7 @@ function TeamsTab({
             </div>
 
             <div className="flex gap-3 pt-4 border-t border-line">
-              <button 
+              <button
                 onClick={handleSaveAdd}
                 className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
               >
@@ -540,29 +535,29 @@ function TeamsTab({
       {/* Edit Team Modal */}
       {editingId && (
         <Modal title={t("datahub.editPlayerTitle").replace(t("datahub.player").toLowerCase(), t("datahub.team").toLowerCase())} onClose={closeModals}>
-           <div className="space-y-4">
-             <div className="grid grid-cols-2 gap-4">
-               <div className="space-y-1">
-                 <label className="text-xs font-medium text-zinc-500">{t("club.teamNamePlaceholder")}</label>
-                 <input 
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("club.teamNamePlaceholder")}</label>
+                <input
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50"
-                 />
-               </div>
-               <div className="space-y-1">
-                 <label className="text-xs font-medium text-zinc-500">{t("club.ageGroupPlaceholder")}</label>
-                 <input 
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500">{t("club.ageGroupPlaceholder")}</label>
+                <input
                   type="text"
                   value={ageGroup}
                   onChange={e => setAgeGroup(e.target.value)}
                   className="w-full rounded-lg border border-line px-3 py-2.5 text-sm outline-none focus:border-accent/50"
-                 />
-               </div>
-             </div>
+                />
+              </div>
+            </div>
 
-             <div className="pt-2">
+            <div className="pt-2">
               <label className="text-xs font-medium text-zinc-500 mb-1 block">Team Photo (optional)</label>
               <div className="flex items-center gap-4">
                 {photoUrl ? (
@@ -587,7 +582,7 @@ function TeamsTab({
             </div>
 
             <div className="flex gap-3 pt-4 border-t border-line">
-              <button 
+              <button
                 onClick={handleSaveEdit}
                 className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
               >
@@ -597,7 +592,7 @@ function TeamsTab({
                 {t("datahub.cancel")}
               </button>
             </div>
-           </div>
+          </div>
         </Modal>
       )}
     </div>
@@ -629,7 +624,7 @@ function PlayersTab({
   const [position, setPosition] = useState("");
   const [dob, setDob] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
-  
+
   const selectedAthlete = athletes.find(a => a.id === selectedAthleteId);
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -646,21 +641,21 @@ function PlayersTab({
 
   async function downloadTemplate() {
     const isEn = t("datahub.title") === "DataHub";
-    const headers = isEn 
+    const headers = isEn
       ? ["Name", "Sex", "Age Group", "Team", "Position", "DOB (YYYY-MM-DD)"]
       : ["Nombre", "Sexo", "Grupo de Edad", "Equipo", "Posicion", "Fecha de Nacimiento (AAAA-MM-DD)"];
-    
+
     // Dynamic import to avoid heavy initial bundle
     const ExcelJS = await import("exceljs");
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(isEn ? "Players" : "Jugadores");
-    
+
     worksheet.addRow(headers);
     worksheet.getRow(1).font = { bold: true };
     worksheet.columns.forEach(c => { c.width = 25; });
-    
+
     const sexOptions = isEn ? '"male,female"' : '"masculino,femenino"';
-    
+
     // Hidden sheet for teams to avoid 255 character limit in list formulae
     const teamSheetName = "HiddenTeams";
     if (teams.length > 0) {
@@ -671,33 +666,33 @@ function PlayersTab({
     }
 
     for (let i = 2; i <= 1000; i++) {
-        // Sex column is B (2)
-        worksheet.getCell(i, 2).dataValidation = {
-            type: 'list',
-            allowBlank: true,
-            formulae: [sexOptions],
-            showErrorMessage: true,
-            errorStyle: 'error',
-            errorTitle: 'Valor incorrecto',
-            error: 'Por favor, selecciona un valor de la lista.'
-        };
+      // Sex column is B (2)
+      worksheet.getCell(i, 2).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [sexOptions],
+        showErrorMessage: true,
+        errorStyle: 'error',
+        errorTitle: 'Valor incorrecto',
+        error: 'Por favor, selecciona un valor de la lista.'
+      };
 
-        // Team column is D (4)
-        if (teams.length > 0) {
-            worksheet.getCell(i, 4).dataValidation = {
-                type: 'list',
-                allowBlank: true,
-                formulae: [`'${teamSheetName}'!$A$1:$A$${teams.length}`],
-                showErrorMessage: true,
-                errorStyle: 'warning',
-                errorTitle: 'Nuevo equipo',
-                error: 'Puedes escribir un equipo nuevo que se creará automáticamente.'
-            };
-        }
+      // Team column is D (4)
+      if (teams.length > 0) {
+        worksheet.getCell(i, 4).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`'${teamSheetName}'!$A$1:$A$${teams.length}`],
+          showErrorMessage: true,
+          errorStyle: 'warning',
+          errorTitle: 'Nuevo equipo',
+          error: 'Puedes escribir un equipo nuevo que se creará automáticamente.'
+        };
+      }
     }
-    
+
     // Set a sample row
-    const sampleRow = isEn 
+    const sampleRow = isEn
       ? ["Sample Athlete", "male", "U14", teams[0]?.name || "U14 Boys", "Winger", "2012-02-14"]
       : ["Ej: Juan Perez", "masculino", "Sub-14", teams[0]?.name || "Juvenil A", "Delantero", "2012-02-14"];
     worksheet.addRow(sampleRow);
@@ -721,17 +716,17 @@ function PlayersTab({
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[workbook.SheetNames[0]]);
-      
+
       let count = 0;
       for (const raw of rows) {
         const map: Record<string, string> = { "Nombre": "Name", "Sexo": "Sex", "masculino": "male", "femenino": "female", "Grupo de Edad": "Age Group", "Equipo": "Team", "Posicion": "Position", "Fecha de Nacimiento (AAAA-MM-DD)": "DOB", "DOB (YYYY-MM-DD)": "DOB", "Fecha de Nacimiento": "DOB" };
         const row: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(raw)) row[map[key] ?? key] = value;
-        
+
         const athleteName = String(row["Name"] ?? "").trim();
         const sexValue = String(row["Sex"] ?? "").trim().toLowerCase();
         let dobStr = String(row["DOB"] ?? "").trim();
-        
+
         // Handling Excel date strings if it outputs serial numbers
         if (!isNaN(Number(dobStr)) && dobStr !== "") {
           const excelEpoch = new Date(1899, 11, 30);
@@ -740,10 +735,10 @@ function PlayersTab({
         }
 
         if (!athleteName || !dobStr || athleteName.includes("Ej: ") || athleteName.includes("Sample Athlete")) continue;
-        
+
         const teamName = String(row["Team"] ?? "").trim();
         const teamMatch = teams.find(t => t.name.toLowerCase() === teamName.toLowerCase());
-        
+
         addAthlete({
           name: athleteName,
           sex: sexValue === "female" ? "female" : "male",
@@ -756,7 +751,7 @@ function PlayersTab({
         });
         count++;
       }
-      
+
       if (count > 0) {
         setImportFeedback(t("datahub.bulkAddSuccess")?.replace("{count}", count.toString()) || `✅ ${count} jugadores añadidos con éxito.`);
         setTimeout(() => {
@@ -773,14 +768,14 @@ function PlayersTab({
     }
     event.target.value = "";
   }
-  
+
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTeam, setFilterTeam] = useState("all");
   const [filterPosition, setFilterPosition] = useState("all");
 
   // Get unique positions for filter
-  const positions = Array.from(new Set(athletes.map(a => a.position).filter(Boolean))) as string[];
+  const positions = Array.from(new Set(athletes.map(a => a.position).filter(Boolean))).sort() as string[];
 
   // Filter athletes
   const filteredAthletes = athletes.filter(a => {
@@ -815,7 +810,7 @@ function PlayersTab({
 
   function handleSaveEdit() {
     if (!editingId || !name.trim() || !ageGroup.trim() || !dob.trim()) return;
-    
+
     const team = teams.find((t) => t.id === teamId);
     updateAthlete(editingId, {
       name: name.trim(),
@@ -832,7 +827,7 @@ function PlayersTab({
 
   function handleSaveAdd() {
     if (!name.trim() || !ageGroup.trim() || !dob.trim()) return;
-    
+
     const team = teams.find((t) => t.id === teamId);
     addAthlete({
       name: name.trim(),
@@ -935,8 +930,8 @@ function PlayersTab({
               </thead>
               <tbody suppressHydrationWarning>
                 {filteredAthletes.map((a) => (
-                  <tr 
-                    key={a.id} 
+                  <tr
+                    key={a.id}
                     onClick={() => setSelectedAthleteId(a.id)}
                     className={cn("border-t border-line/50 hover:bg-zinc-50/50 transition cursor-pointer", selectedAthleteId === a.id && "bg-accent/5")}
                   >
@@ -1268,7 +1263,7 @@ function PlayersTab({
                 />
               </div>
             </div>
-            
+
             <div className="pt-2">
               <label className="text-xs font-medium text-zinc-500 mb-1 block">{t("datahub.photoOptional")}</label>
               <div className="flex items-center gap-4">
@@ -1319,7 +1314,7 @@ function PlayersTab({
                   {t("datahub.cancel")}
                 </button>
               </div>
-              
+
               <button
                 type="button"
                 onClick={() => {
@@ -1352,7 +1347,7 @@ function Modal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 transition-all animate-in fade-in duration-200">
-      <div 
+      <div
         className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
@@ -1382,6 +1377,7 @@ function SettingsTab({
   updateClub: (updates: { name?: string; region?: string; sport?: "football" | "futsal"; accentColor?: string; badgeUrl?: string }) => void;
 }) {
   const { t } = useLocale();
+  const { resetState } = useAppState();
   const [name, setName] = useState(club.name);
   const [region, setRegion] = useState(club.region);
   const [sport, setSport] = useState<"football" | "futsal" | "">(club.sport || "");
@@ -1527,9 +1523,22 @@ function SettingsTab({
         <button
           type="button"
           onClick={() => updateClub({ name, region, sport: sport || undefined, accentColor, badgeUrl })}
-          className="rounded-lg bg-accent px-4 py-2 text-sm text-white"
+          className="rounded-full bg-accent px-6 py-2 text-sm font-medium text-white transition hover:bg-accent/90"
         >
           {t("common.save")}
+        </button>
+      </div>
+
+      <div className="rounded-[1.75rem] border border-red-200 bg-red-50/50 p-6 mt-6">
+        <h3 className="text-lg font-semibold text-red-900 mb-2">{t("club.dangerZone") || "Zona de peligro"}</h3>
+        <p className="text-sm text-red-700 mb-4">
+          {t("club.resetWarning") || "Si algo no funciona o quieres empezar de cero con los datos de demo, puedes restablecer la aplicación."}
+        </p>
+        <button
+          onClick={resetState}
+          className="rounded-full bg-red-600 px-6 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+        >
+          {t("club.resetApp") || "Restablecer aplicación"}
         </button>
       </div>
     </div>
@@ -1553,7 +1562,7 @@ function TestBatteryTab({
   setTestBatteryArea: (area: PerformanceArea) => void;
   showAddTestForm: boolean;
   setShowAddTestForm: (show: boolean) => void;
-  newDef: { name: string; unit: string; attempts: number; isRating: boolean; calculation: "best_min" | "best_max" | "average"; description: string; mediaUrl: string; mediaType: "image" | "video" | undefined };
+  newDef: { name: string; nameKey: string | undefined; descriptionKey: string | undefined; unit: string; attempts: number; isRating: boolean; scoringStrategy: "best" | "average"; interpretation: "higher_better" | "lower_better"; description: string; mediaUrl: string; mediaType: "image" | "video" | undefined; subCategory: string | undefined };
   setNewDef: React.Dispatch<React.SetStateAction<typeof newDef>>;
   areaTestDefs: PerformanceDefinition[];
   addDef: (e: React.FormEvent) => void;
@@ -1618,9 +1627,9 @@ function TestBatteryTab({
                 <div key={d.id} className="rounded-2xl border border-line bg-white/70 px-4 py-3">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex-1 text-left">
-                      <p className="font-semibold text-zinc-900">{d.name}</p>
+                      <p className="font-semibold text-zinc-900">{d.nameKey ? t(d.nameKey) : d.name}</p>
                       <p className="mt-1 text-sm text-zinc-600">
-                        {d.unit} · {d.attempts} {t("datahub.attemptsShort")} · {d.calculation === "average" ? t("datahub.avgShort") : d.calculation === "best_min" ? t("datahub.bestMinShort") : t("datahub.bestMaxShort")}
+                        {d.unit} · {d.attempts} {t("datahub.attemptsShort")} · {d.scoringStrategy === "average" ? t("datahub.avgShort") : d.interpretation === "lower_better" ? t("datahub.bestMinShort") : t("datahub.bestMaxShort")}
                       </p>
                     </div>
                     <button
@@ -1636,7 +1645,7 @@ function TestBatteryTab({
                   </div>
                   {(d.description || d.mediaUrl) && (
                     <div className="mt-3 pt-3 border-t border-line/50 space-y-2">
-                      {d.description && <p className="text-xs text-zinc-600 line-clamp-2">{d.description}</p>}
+                      {(d.descriptionKey || d.description) && <p className="text-xs text-zinc-600 line-clamp-2">{d.descriptionKey ? t(d.descriptionKey) : d.description}</p>}
                       {d.mediaUrl && (
                         <div className="rounded-lg overflow-hidden h-20 bg-zinc-200">
                           {d.mediaType === "image" ? (
@@ -1654,123 +1663,195 @@ function TestBatteryTab({
           </div>
         )}
 
-        {/* Add test form - collapsible */}
+        {/* Add test form - Modal Overlay */}
         {showAddTestForm && (
-          <div className="rounded-[1.75rem] border border-line bg-white/50 p-6">
-            <div className="mb-5">
-              <h3 className="text-lg font-semibold text-zinc-900">{t("datahub.addMetricTitle")}</h3>
-              <p className="mt-1 text-sm text-zinc-600">{t("datahub.addMetricBody")}</p>
-            </div>
-            <form onSubmit={addDef} className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/60 backdrop-blur-sm p-4">
+            <div
+              className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[2.5rem] bg-white p-8 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-6 flex items-center justify-between">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-2">{t("datahub.metricName")}</label>
-                  <input
-                    className="w-full rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700"
-                    placeholder={t("datahub.exampleMetricNames")}
-                    value={newDef.name}
-                    onChange={e => setNewDef(c => ({ ...c, name: e.target.value }))}
-                  />
+                  <h3 className="text-2xl font-bold text-zinc-900">{t("datahub.addMetricTitle")}</h3>
+                  <p className="mt-1 text-zinc-600">{t("datahub.addMetricBody")}</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-2">{t("datahub.metricUnit")}</label>
-                  <input
-                    className="w-full rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700"
-                    placeholder={t("datahub.exampleMetricUnit")}
-                    value={newDef.unit}
-                    onChange={e => setNewDef(c => ({ ...c, unit: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-2">{t("datahub.attemptsCount")}</label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="w-full rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700"
-                    placeholder={t("datahub.exampleAttempts")}
-                    value={newDef.attempts}
-                    onChange={e => setNewDef(c => ({ ...c, attempts: Number(e.target.value) || 1 }))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-2">{t("datahub.resultType")}</label>
-                  <select
-                    className="w-full rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700"
-                    value={newDef.isRating ? "rating" : "numeric"}
-                    onChange={e => setNewDef(c => ({ ...c, isRating: e.target.value === "rating" }))}
-                  >
-                    <option value="numeric">{t("datahub.resultNumeric")}</option>
-                    <option value="rating">{t("datahub.resultRating")}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-700 mb-2">{t("datahub.attemptsCalculation")}</label>
-                  <select
-                    className={cn(
-                      "w-full rounded-2xl border border-line px-4 py-3 text-zinc-700 transition",
-                      newDef.attempts === 1
-                        ? "bg-zinc-100 opacity-50 cursor-not-allowed"
-                        : "bg-white/70"
-                    )}
-                    value={newDef.attempts === 1 ? "best_max" : newDef.calculation}
-                    disabled={newDef.attempts === 1}
-                    onChange={e => setNewDef(c => ({ ...c, calculation: e.target.value as "best_min" | "best_max" | "average" }))}
-                  >
-                    <option value="best_min">{t("datahub.calcBestMin")}</option>
-                    <option value="best_max">{t("datahub.calcBestMax")}</option>
-                    <option value="average">{t("datahub.calcAverage")}</option>
-                  </select>
-                </div>
+                <button
+                  onClick={() => setShowAddTestForm(false)}
+                  className="rounded-full bg-zinc-100 p-2 text-zinc-500 hover:bg-zinc-200"
+                >
+                  <X className="h-6 w-6" />
+                </button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-2">{t("datahub.testDescriptionOptional")}</label>
-                <textarea
-                  className="w-full rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700 resize-none"
-                  placeholder={t("datahub.exampleTestDescription")}
-                  rows={3}
-                  value={newDef.description}
-                  onChange={e => setNewDef(c => ({ ...c, description: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-3">{t("datahub.mediaOptional")}</label>
-                <div className="flex gap-3">
-                  <label className="flex-1 cursor-pointer">
-                    <div className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-white/50 px-4 py-6 hover:bg-white/70 transition text-zinc-600">
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span className="text-sm font-medium">{t("datahub.image")}</span>
-                    </div>
-                    <input type="file" accept="image/*" className="hidden" onChange={e => handleMedia(e, "image")} />
-                  </label>
-                  <label className="flex-1 cursor-pointer">
-                    <div className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-white/50 px-4 py-6 hover:bg-white/70 transition text-zinc-600">
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-sm font-medium">{t("datahub.video")}</span>
-                    </div>
-                    <input type="file" accept="video/*" className="hidden" onChange={e => handleMedia(e, "video")} />
-                  </label>
+
+              <form onSubmit={addDef} className="space-y-6">
+                {/* Preset Selector */}
+                <div className="rounded-3xl border-2 border-accent/20 bg-accent/5 p-5">
+                  <label className="block text-sm font-bold text-accent mb-2 uppercase tracking-tight">{t("datahub.usePreset") || "Usar test predefinido"}</label>
+                  <select
+                    className="w-full rounded-2xl border border-accent/30 bg-white px-4 py-3 text-zinc-700 outline-none focus:ring-4 focus:ring-accent/10"
+                    onChange={(e) => {
+                      const preset = performancePresets[testBatteryArea].find(p => p.name === e.target.value);
+                      if (preset) {
+                        setNewDef({
+                          name: preset.name,
+                          nameKey: preset.nameKey,
+                          descriptionKey: preset.descriptionKey,
+                          unit: preset.unit,
+                          attempts: preset.scoringStrategy === "average" ? 3 : 1,
+                          isRating: preset.isRating,
+                          scoringStrategy: preset.scoringStrategy,
+                          interpretation: preset.interpretation,
+                          description: "", // Reset manual description
+                          mediaUrl: "",
+                          mediaType: undefined,
+                          subCategory: undefined,
+                        });
+                      }
+                    }}
+                    value=""
+                  >
+                    <option value="" disabled>{t("datahub.selectPreset") || "-- Seleccionar test --"}</option>
+                    {performancePresets[testBatteryArea].map(p => (
+                      <option key={p.name} value={p.name}>{p.nameKey ? t(p.nameKey) : p.name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-zinc-500 italic px-1">
+                    {t("datahub.presetHint") || "Selecciona un test común para rellenar los campos automáticamente."}
+                  </p>
                 </div>
-                {newDef.mediaUrl && (
-                  <div className="mt-3 rounded-2xl border border-line bg-white/70 p-3">
-                    <p className="text-xs text-zinc-600 mb-2">{t("datahub.selectedMedia")} ({newDef.mediaType})</p>
-                    {newDef.mediaType === "image" ? (
-                      <img src={newDef.mediaUrl} alt="preview" className="h-32 w-full rounded object-cover" />
-                    ) : (
-                      <video src={newDef.mediaUrl} className="h-32 w-full rounded object-cover" controls />
-                    )}
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-semibold text-zinc-700 mb-2">{t("datahub.metricName")}</label>
+                    <input
+                      className="w-full rounded-2xl border border-line bg-zinc-50 px-4 py-4 text-zinc-900 outline-none focus:bg-white focus:ring-2 focus:ring-accent/20"
+                      placeholder={t("datahub.exampleMetricNames")}
+                      value={newDef.nameKey ? t(newDef.nameKey) : newDef.name}
+                      onChange={e => setNewDef(c => ({ ...c, name: e.target.value, nameKey: undefined, descriptionKey: undefined }))}
+                    />
                   </div>
-                )}
-              </div>
-              <button className="inline-flex items-center justify-center gap-2 rounded-2xl bg-accent px-6 py-3 text-sm font-medium text-slate-950 hover:bg-accent-strong w-full md:w-auto">
-                <Plus className="h-4 w-4" />
-                {t("datahub.createMetric")}
-              </button>
-            </form>
+                  <div>
+                    <label className="block text-sm font-semibold text-zinc-700 mb-2">{t("datahub.metricUnit")}</label>
+                    <input
+                      className="w-full rounded-2xl border border-line bg-zinc-50 px-4 py-4 text-zinc-900 outline-none focus:bg-white focus:ring-2 focus:ring-accent/20"
+                      placeholder={t("datahub.exampleMetricUnit")}
+                      value={newDef.unit}
+                      onChange={e => setNewDef(c => ({ ...c, unit: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-zinc-700 mb-2">{t("datahub.attemptsCount")}</label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-full rounded-2xl border border-line bg-zinc-50 px-4 py-4 text-zinc-900 outline-none focus:bg-white focus:ring-2 focus:ring-accent/20"
+                      placeholder={t("datahub.exampleAttempts")}
+                      value={newDef.attempts}
+                      onChange={e => setNewDef(c => ({ ...c, attempts: Number(e.target.value) || 1 }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-zinc-700 mb-2">{t("datahub.resultType")}</label>
+                    <select
+                      className="w-full rounded-2xl border border-line bg-zinc-50 px-4 py-4 text-zinc-900 outline-none focus:bg-white focus:ring-2 focus:ring-accent/20"
+                      value={newDef.isRating ? "rating" : "numeric"}
+                      onChange={e => setNewDef(c => ({ ...c, isRating: e.target.value === "rating" }))}
+                    >
+                      <option value="numeric">{t("datahub.resultNumeric")}</option>
+                      <option value="rating">{t("datahub.resultRating")}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-zinc-700 mb-2">{t("datahub.metricGoal")}</label>
+                    <select
+                      className={cn(
+                        "w-full rounded-2xl border border-line px-4 py-4 text-zinc-900 outline-none transition",
+                        newDef.attempts === 1 ? "bg-zinc-100 opacity-50 cursor-not-allowed" : "bg-zinc-50 focus:bg-white focus:ring-2 focus:ring-accent/20"
+                      )}
+                      value={newDef.scoringStrategy}
+                      disabled={newDef.attempts === 1}
+                      onChange={e => setNewDef(c => ({ ...c, scoringStrategy: e.target.value as "best" | "average" }))}
+                    >
+                      <option value="best">{t("datahub.calcBest")}</option>
+                      <option value="average">{t("datahub.calcAverage")}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-zinc-700 mb-2">{t("datahub.metricInterpretation")}</label>
+                    <select
+                      className="w-full rounded-2xl border border-line bg-zinc-50 px-4 py-4 text-zinc-900 outline-none focus:bg-white focus:ring-2 focus:ring-accent/20"
+                      value={newDef.interpretation}
+                      onChange={e => setNewDef(c => ({ ...c, interpretation: e.target.value as "higher_better" | "lower_better" }))}
+                    >
+                      <option value="higher_better">{t("datahub.interpretHigher")}</option>
+                      <option value="lower_better">{t("datahub.interpretLower")}</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-zinc-700 mb-2">{t("datahub.testDescriptionOptional")}</label>
+                  <textarea
+                    className="w-full rounded-2xl border border-line bg-zinc-50 px-4 py-4 text-zinc-900 outline-none focus:bg-white focus:ring-2 focus:ring-accent/20 resize-none"
+                    placeholder={t("datahub.exampleTestDescription")}
+                    rows={3}
+                    value={newDef.descriptionKey ? t(newDef.descriptionKey) : newDef.description}
+                    onChange={e => setNewDef(c => ({ ...c, description: e.target.value, descriptionKey: undefined }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-zinc-700 mb-3">{t("datahub.mediaOptional")}</label>
+                  <div className="flex gap-4">
+                    <label className="flex-1 cursor-pointer">
+                      <div className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-4 py-10 hover:bg-zinc-100 transition text-zinc-500">
+                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="font-semibold">{t("datahub.image")}</span>
+                      </div>
+                      <input type="file" accept="image/*" className="hidden" onChange={e => handleMedia(e, "image")} />
+                    </label>
+                    <label className="flex-1 cursor-pointer">
+                      <div className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-4 py-10 hover:bg-zinc-100 transition text-zinc-500">
+                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="font-semibold">{t("datahub.video")}</span>
+                      </div>
+                      <input type="file" accept="video/*" className="hidden" onChange={e => handleMedia(e, "video")} />
+                    </label>
+                  </div>
+                  {newDef.mediaUrl && (
+                    <div className="mt-4 rounded-3xl border border-line bg-zinc-50 p-4 relative group">
+                      <button
+                        onClick={() => setNewDef(c => ({ ...c, mediaUrl: "", mediaType: undefined }))}
+                        className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                      <p className="text-xs text-zinc-600 mb-2 font-bold uppercase tracking-widest">{t("datahub.selectedMedia")} - {newDef.mediaType}</p>
+                      {newDef.mediaType === "image" ? (
+                        <img src={newDef.mediaUrl} alt="preview" className="h-40 w-full rounded-2xl object-cover" />
+                      ) : (
+                        <video src={newDef.mediaUrl} className="h-40 w-full rounded-2xl object-cover" controls />
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddTestForm(false)}
+                    className="flex-1 rounded-2xl border border-line py-4 font-bold text-zinc-700 hover:bg-zinc-50 transition"
+                  >
+                    {t("datahub.cancel")}
+                  </button>
+                  <button className="flex-2 rounded-2xl bg-accent px-8 py-4 font-bold text-slate-950 hover:bg-accent-strong transition shadow-lg shadow-accent/20">
+                    {t("datahub.createMetric")}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 
