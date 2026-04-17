@@ -184,7 +184,58 @@ export function PerformanceSection({ area, setArea, performanceEntries }: { area
               <Field label={t("datahub.measurement")}><input type="date" className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" value={perfForm.measurementDate} onChange={e => sv("measurementDate", e.target.value)} /></Field>
               <Field label={t("datahub.test")}><select className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" value={perfForm.testName} onChange={e => sv("testName", e.target.value)}>{testDefs.map(d => <option key={d.id} value={d.name}>{d.name} ({d.unit})</option>)}</select></Field>
               <Field label={t("datahub.unit")}><input className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" value={perfForm.unit} onChange={e => sv("unit", e.target.value)} /></Field>
-              {selDef?.isRating ? <><Field label={t("datahub.rating")}><div className="grid grid-cols-2 gap-2">{ratings.map(r => <button key={r.v} type="button" onClick={() => sv("ratingLevel", r.v)} className={cn("rounded-2xl border px-4 py-3 text-sm font-medium transition", perfForm.ratingLevel === r.v ? "border-accent bg-accent text-white" : "border-line bg-white/70 text-zinc-700 hover:bg-white")}>{r.l}</button>)}</div></Field><Field label={t("datahub.numericValueOptional")}><input type="number" step="0.1" className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" placeholder={t("datahub.exampleRatingValue")} value={perfForm.ratingValue ?? ""} onChange={e => sv("ratingValue", Number(e.target.value))} /></Field></> : selDef && selDef.attempts > 1 ? <Field label={`${t("datahub.valuesWithAttempts")} (${selDef.attempts} ${t("datahub.attemptsShort")} - ${selDef.calculation === "average" ? t("datahub.avgShort") : selDef.calculation === "best_min" ? t("datahub.bestMinShort") : t("datahub.bestMaxShort")})`} className="md:col-span-2"><div className="grid gap-2 md:grid-cols-2">{Array.from({ length: selDef.attempts }, (_, i) => <input key={i} type="number" step="0.01" className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" placeholder={`${t("datahub.attemptLabel")} ${i + 1}`} value={attempts[i] || ""} onChange={e => { const nv = [...attempts]; nv[i] = Number(e.target.value) || 0; setAttempts(nv); const vv = nv.filter(v => v > 0); let cv = 0; if (vv.length > 0) { if (selDef.calculation === "average") cv = vv.reduce((a, b) => a + b, 0) / vv.length; else if (selDef.calculation === "best_min") cv = Math.min(...vv); else cv = Math.max(...vv); } sv("value", cv); }} />)}</div></Field> : <Field label={t("datahub.value")}><input type="number" step="0.01" className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" placeholder={t("datahub.exampleValue")} value={perfForm.value || ""} onChange={e => sv("value", Number(e.target.value))} /></Field>}
+              {selDef?.isRating ? (
+                <>
+                  <Field label={t("datahub.rating")}>
+                    <div className="grid grid-cols-2 gap-2">
+                      {ratings.map(r => (
+                        <button key={r.v} type="button" onClick={() => sv("ratingLevel", r.v)} className={cn("rounded-2xl border px-4 py-3 text-sm font-medium transition", perfForm.ratingLevel === r.v ? "border-accent bg-accent text-white" : "border-line bg-white/70 text-zinc-700 hover:bg-white")}>
+                          {r.l}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field label={t("datahub.numericValueOptional")}>
+                    <input type="number" step="0.1" className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" placeholder={t("datahub.exampleRatingValue")} value={perfForm.ratingValue ?? ""} onChange={e => sv("ratingValue", Number(e.target.value))} />
+                  </Field>
+                </>
+              ) : selDef && selDef.attempts > 1 ? (
+                <Field label={`${t("datahub.valuesWithAttempts")} (${selDef.attempts} ${t("datahub.attemptsShort")} - ${selDef.scoringStrategy === "average" ? t("datahub.avgShort") : selDef.interpretation === "lower_better" ? t("datahub.bestMinShort") : t("datahub.bestMaxShort")})`} className="md:col-span-2">
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {Array.from({ length: selDef.attempts }, (_, i) => (
+                      <input 
+                        key={i} 
+                        type="number" 
+                        step="0.01" 
+                        className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" 
+                        placeholder={`${t("datahub.attemptLabel")} ${i + 1}`} 
+                        value={attempts[i] || ""} 
+                        onChange={e => { 
+                          const nv = [...attempts]; 
+                          nv[i] = Number(e.target.value) || 0; 
+                          setAttempts(nv); 
+                          const vv = nv.filter(v => v > 0); 
+                          let cv = 0; 
+                          if (vv.length > 0) { 
+                            if (selDef.scoringStrategy === "average") {
+                              cv = vv.reduce((a, b) => a + b, 0) / vv.length;
+                            } else if (selDef.interpretation === "lower_better") {
+                              cv = Math.min(...vv);
+                            } else {
+                              cv = Math.max(...vv);
+                            }
+                          } 
+                          sv("value", cv); 
+                        }} 
+                      />
+                    ))}
+                  </div>
+                </Field>
+              ) : (
+                <Field label={t("datahub.value")}>
+                  <input type="number" step="0.01" className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" placeholder={t("datahub.exampleValue")} value={perfForm.value || ""} onChange={e => sv("value", Number(e.target.value))} />
+                </Field>
+              )}
               <Field label={t("common.notes")} className="md:col-span-2"><input className="rounded-2xl border border-line bg-white/70 px-4 py-3 text-zinc-700" placeholder={t("datahub.exampleNotes")} value={perfForm.notes ?? ""} onChange={e => sv("notes", e.target.value)} /></Field>
               <button className="inline-flex items-center justify-center gap-2 rounded-2xl bg-accent px-5 py-3 text-sm font-medium text-slate-950 md:col-span-2 hover:bg-accent-strong"><Plus className="h-4 w-4" />{t("datahub.addTest")}</button>
               {perfFeedback && <p className="mt-4 rounded-2xl border border-line bg-white/70 px-4 py-3 text-sm text-zinc-700 md:col-span-2">{perfFeedback === "saved" ? t("datahub.testAddedOk") : perfFeedback === "duplicate" ? t("datahub.cannotImportRows") : t("datahub.importedRows").replace("{count}", perfFeedback.split(":")[1] ?? "0")}</p>}

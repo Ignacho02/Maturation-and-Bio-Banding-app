@@ -152,12 +152,15 @@ export interface TrainingLoadEntry {
 export interface PerformanceDefinition {
   id: string;
   name: string;
+  nameKey?: string;
   area: PerformanceArea;
   unit: string;
   attempts: number;
   isRating: boolean;
-  calculation: "best_min" | "best_max" | "average";
+  scoringStrategy: "best" | "average";
+  interpretation: "higher_better" | "lower_better";
   description?: string;
+  descriptionKey?: string;
   mediaUrl?: string;
   mediaType?: "image" | "video";
 }

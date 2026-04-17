@@ -47,21 +47,67 @@ interface AppStateContextValue {
   addPerformanceDefinition: (def: Omit<PerformanceDefinition, "id">) => void;
   updatePerformanceDefinition: (id: string, updates: Partial<PerformanceDefinition>) => void;
   deletePerformanceDefinition: (id: string) => void;
+  resetState: () => void;
 }
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
 
-function normalizeState(input: Partial<AppState> | AppState | null | undefined): AppState {
+function normalizeState(input: any): AppState {
   const candidate = input ?? {};
+
+  // Migrate performanceDefinitions
+  const rawDefs = Array.isArray(candidate.performanceDefinitions)
+    ? (candidate.performanceDefinitions as any[])
+    : undefined;
+
+  const migratedDefs: PerformanceDefinition[] | undefined = rawDefs?.map((d: any) => {
+    // If it's already in the new format, keep it but ensure fields exist
+    if (d.scoringStrategy && d.interpretation) {
+      return {
+        ...d,
+        scoringStrategy: d.scoringStrategy || "best",
+        interpretation: d.interpretation || "higher_better",
+      } as PerformanceDefinition;
+    }
+    // Migrate legacy `calculation` field
+    const calc: string | undefined = d.calculation;
+    let scoringStrategy: "best" | "average" = "best";
+    let interpretation: "higher_better" | "lower_better" = "higher_better";
+    if (calc === "average") {
+      scoringStrategy = "average";
+    } else if (calc === "best_min") {
+      interpretation = "lower_better";
+    }
+    const { calculation: _removed, ...rest } = d;
+    return {
+      ...rest,
+      scoringStrategy,
+      interpretation,
+      // Ensure other fields exist
+      attempts: rest.attempts || 1,
+      isRating: !!rest.isRating,
+      area: rest.area || "physical",
+    } as PerformanceDefinition;
+  });
 
   const baseState: AppState = {
     club: candidate.club ?? demoState.club,
-    teams: candidate.teams ?? demoState.teams,
-    athletes: candidate.athletes ?? demoState.athletes,
-    records: candidate.records ?? demoState.records,
-    performanceEntries: candidate.performanceEntries ?? demoState.performanceEntries,
-    trainingLoadEntries: candidate.trainingLoadEntries ?? demoState.trainingLoadEntries,
-    performanceDefinitions: candidate.performanceDefinitions ?? demoState.performanceDefinitions,
+    teams: Array.isArray(candidate.teams) ? candidate.teams : demoState.teams,
+    athletes: Array.isArray(candidate.athletes) ? candidate.athletes : demoState.athletes,
+    records: Array.isArray(candidate.records) ? candidate.records : demoState.records,
+    performanceEntries: Array.isArray(candidate.performanceEntries) ? candidate.performanceEntries : demoState.performanceEntries,
+    trainingLoadEntries: Array.isArray(candidate.trainingLoadEntries) ? candidate.trainingLoadEntries : demoState.trainingLoadEntries,
+    performanceDefinitions: (migratedDefs ?? demoState.performanceDefinitions).map(def => {
+      const demoRef = demoState.performanceDefinitions.find(ref => ref.id === def.id);
+      if (demoRef) {
+        return {
+          ...def,
+          nameKey: def.nameKey || demoRef.nameKey,
+          descriptionKey: def.descriptionKey || demoRef.descriptionKey,
+        };
+      }
+      return def;
+    }),
     preferences: {
       ...demoState.preferences,
       ...(candidate.preferences ?? {}),
@@ -72,6 +118,7 @@ function normalizeState(input: Partial<AppState> | AppState | null | undefined):
   const existingAthleteIds = new Set(baseState.athletes.map((athlete) => athlete.id));
   const existingRecordIds = new Set(baseState.records.map((record) => record.id));
   const existingPerformanceIds = new Set(baseState.performanceEntries.map((entry) => entry.id));
+  const existingDefIds = new Set(baseState.performanceDefinitions.map((d) => d.id));
 
   return {
     ...baseState,
@@ -92,6 +139,10 @@ function normalizeState(input: Partial<AppState> | AppState | null | undefined):
       ...demoState.performanceEntries.filter(
         (entry) => !existingPerformanceIds.has(entry.id),
       ),
+    ],
+    performanceDefinitions: [
+      ...baseState.performanceDefinitions,
+      ...demoState.performanceDefinitions.filter((d) => !existingDefIds.has(d.id)),
     ],
   };
 }
@@ -483,6 +534,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       addPerformanceDefinition,
       updatePerformanceDefinition,
       deletePerformanceDefinition,
+      resetState: () => {
+        if (confirm(globalThis.localStorage?.getItem("locale") === "es" ? "¿Estás seguro de que quieres borrar todos los datos y restablecer la demo?" : "Are you sure you want to clear all data and reset the demo?")) {
+          setState(demoState);
+        }
+      },
     }),
     [state, assessments],
   );
